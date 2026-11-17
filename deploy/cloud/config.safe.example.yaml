@@ -1,0 +1,82 @@
+# 云端安全默认模板（Apache-2.0，与仓库 LICENSE 相同）。
+# 复制为安装目录的 config.yaml 后再改。不要把填好的 config.yaml 提交到公开仓库。
+# 下面的航线、日期、人数都是虚构示例，不是一笔真实行程。
+# schedule.enabled: false 才会真的不调度。把 interval_minutes 调得很大只是推迟，不是关闭。
+
+users:
+- name: example-not-a-real-trip
+  routes:
+  - from: SHA
+    from_name: 示例上海
+    to: CAN
+    to_name: 示例广州
+    dates:
+    - '2099-01-01'
+    alert_direct: 0
+    alert_transfer: 0
+    direct_only: true
+    enabled: false
+  platforms: []
+  notifier:
+    digest: false
+    storm_repeat: 1
+    win_toast: false
+    channel_alert:
+      enabled: false
+    report_hour: 9
+    dingtalk:
+      enabled: false
+      webhook: ''
+      secret: ''
+      at_mobile: ''
+    serverchan:
+      enabled: false
+      send_key: ''
+    email:
+      enabled: false
+      host: ''
+      user: ''
+      password: ''
+      to: ''
+    ntfy:
+      enabled: false
+      topic: ''
+    bark:
+      enabled: false
+      key: ''
+    aliyun:
+      enabled: false
+      url: ''
+      user: ''
+      password: ''
+
+passengers:
+  adults: 2
+  children:
+  - age: 10
+  currency: CNY
+  cabin: economy
+
+schedule:
+  enabled: false
+  run_on_start: false
+  interval_minutes: 30
+  jitter_minutes: 0
+
+crawler:
+  collect: false
+  headless: true
+  auto_verify: false
+  user_data_dir: user_data
+
+android:
+  enabled: false
+
+web:
+  enabled: false
+  host: 127.0.0.1
+  port: 8765
+
+output:
+  db_path: data/prices.db
+  log_path: logs/monitor.log

@@ -4059,7 +4059,12 @@ def main():
     ap = argparse.ArgumentParser(description=f"机票监控 ticket-monitoring v{__version__}")
     ap.add_argument("--version", action="version", version=__version__)
     ap.add_argument("-c", "--config", default="config.yaml", help="配置文件路径")
-    ap.add_argument("--once", action="store_true", help="每条航线只运行一次后退出")
+    ap.add_argument("--once", action="store_true",
+                    help="每条航线只运行一次后退出；不启动定时调度。"
+                         "crawler.collect 未打开或登录标记不足时只写结果文件，不采集")
+    ap.add_argument("--health", action="store_true",
+                    help="检查调度是否已真正关闭、通知是否关闭、报价口径是否降级，"
+                         "写入 data/cloud-health.json 后退出；不监听、不采集")
     ap.add_argument("--setup", action="store_true", help="重跑配置向导")
     ap.add_argument("--report", action="store_true",
                     help="立即生成价格走势图并推送钉钉（未配图床则只存本地）")
@@ -4074,6 +4079,11 @@ def main():
     ap.add_argument("--restart-delay", type=float, default=0.0,
                     help=argparse.SUPPRESS)
     args = ap.parse_args()
+
+    if args.health:
+        # 先于实例锁：体检不该因为已有监控进程而失败，也不下载浏览器。
+        from core.cloud_adapt import health_cli
+        sys.exit(health_cli(args.config))
 
     # 锁在参数解析后：--version/--help 曾被单实例锁拦下，
     # 发版门禁「exe 实跑 --version」在监控运行时必假红
@@ -4197,6 +4207,12 @@ def main():
 
     out = cfg.get("output", {})
     logger = setup_logger(_anchored(out.get("log_path"), "logs/monitor.log"))
+    # 云端适配：schedule.enabled=false 时不得进入后面的浏览器安装和定时调度。
+    # --once 在采集开关或登录标记不满足时也在这里退出。--login/--report 仍走原路径。
+    from core.cloud_adapt import preempt
+    _cloud_rc = preempt(args, cfg, logger)
+    if _cloud_rc is not None:
+        sys.exit(_cloud_rc)
     # 启动级路径迁移（r339/r342「一切配置可变更化」）：源=上次成功
     # 启动记录（跨重启链式迁移），目标=本次 config.yaml；db/user_data
     # 自动搬迁，日志/内核目录不搬（切换后新位置生效，旧档保留）。
@@ -4557,7 +4573,9 @@ def main():
         return
 
     # 伴生本地控制台（127.0.0.1，随监控常驻；--once 不启动）
-    if not args.once:
+    # web.enabled: false 时不监听。缺省仍启动，避免改变上游配置的行为。
+    from core.cloud_adapt import web_enabled as _web_enabled
+    if not args.once and _web_enabled(cfg):
         try:
             from webui import start_web
 
@@ -4617,6 +4635,20 @@ def main():
                 _open_console(_url, logger)
         except Exception as e:
             logger.warning("控制台启动异常: %s", e)
+    elif not args.once:
+        logger.info("web.enabled=false，不监听控制台端口")
+
+    from core.cloud_adapt import (
+        finish_once_crawl, rows_since, schedule_enabled as _sched_on)
+    if args.once:
+        rc = finish_once_crawl(
+            cfg, logger, lambda: sweep(force=True),
+            lambda since: rows_since(
+                _anchored(out.get("db_path"), "data/prices.db"), since))
+        sys.exit(rc)
+    if not _sched_on(cfg):
+        logger.info("schedule.enabled=false，不启动定时调度")
+        return
 
     sched_cfg = (rt["users"][0]["schedule"] if rt["users"]
                  else cfg.get("schedule") or {})
